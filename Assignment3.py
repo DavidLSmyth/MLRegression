@@ -32,6 +32,7 @@ Created on Sun Nov 13 17:57:59 2016
 #2).Vectorise current implementation
 #3).Implement multiclass 1 vs. all predictions
 #4).Figure how to recover the unscaled weights
+#5).Rename everything to train/test to be clear what's what
 
 
 class LogisticRegression():
@@ -54,6 +55,9 @@ class LogisticRegression():
         #if target is in the dataframe, make sure that it isn't continuous, not sure exactly how to do this
         else:
             pass
+        #initally set the whole of the 
+        self.TrainTestRatio=1
+        self.targetName=target
         #this might not be necessary
         self.predictorNames=predictors
         #append on a column of ones
@@ -62,8 +66,8 @@ class LogisticRegression():
         self.nsamples=np.shape(self.predictors)[0]
         self.npredictors=np.shape(self.predictors)[1]
         #np.hstack((np.zeros(shape=(X.shape[0],1), dtype='float') + 1, X))
-        print('predictors')
-        print(self.predictors)
+        #print('predictors')
+        #print(self.predictors)
         self.scaleFactor=self.predictors.max()
         self.target=np.array(dataframe[target])
         self.targetLevels=dataframe[target].unique()
@@ -84,15 +88,54 @@ class LogisticRegression():
         #self.parameterVector=[0 for i in range(len(predictors))]
         self.tolerance=0.00002
         self.learningRate=1.2
-        self.maxiter=4000
+        self.maxiter=2
+      
+    #have multiple implementations of data preprocessing code, do it all here  
+    def __preprocess(self, data):
+        pass
 
         #Validations complete
-        
+
+    #fit should have 0 or 1 as the target ALWAYS and should probably take a training set to fit
     def fit(self):
+        print('\n\n fit')
+        print('Fitting Logistic Regression Model to ',self.TrainTestRatio,' of the dataset')
+        print('length of predictors: ',len(self.predictors))
+        print(self.predictors,self.encodedTarget)
+        import time
+        st=time.clock()
         self.__gradientDescent(self.predictors)
+        print('Fit in ',time.clock()-st, ' seconds')
         print('gradient descent results: ')
         print(self.parameterVector)
-        
+    
+    def trainTestSplit(self, ratio):
+        '''Ratio is the desired ratio for the train set size to test set size, no return value'''
+        print('\n\n trainTestSplit')
+        self.TrainTestRatio=ratio
+        import numpy as np
+        randoms=np.random.uniform(0,1,len(self.dataframe))
+        print('Random Split: ',randoms)
+        self.trainSet=self.dataframe.iloc[randoms<ratio].copy(deep=True)
+        self.testSet=self.dataframe.iloc[randoms>=ratio].copy(deep=True)
+        #print(self.dataframe.iloc[randoms>=ratio])
+        self.predictors=np.matrix(self.trainSet[self.predictorNames],dtype=float)
+        self.nsamples=np.shape(self.predictors)[0]
+        self.npredictors=np.shape(self.predictors)[1]
+        self.encodedTarget=np.array(self.trainSet[self.targetName])
+        #self.encodedTarget=list(map(lambda x: self.uniqueEncodedLevels[list(self.targetLevels).index(x)] ,self.target))
+        print('encodedTarget')
+        #This treats the problem as binary for the time being
+        #self.encodedTarget=list(map(lambda x: 1 if x==2 else x,self.encodedTarget))
+        print(self.encodedTarget)
+        #add 1 because of the intercept value
+        self.parameterVector=np.array([0 for i in range(self.predictors.shape[1]+1)])
+        print('predictors')
+        print(self.predictors)
+        self.scaleFactor=self.predictors.max()
+        print('length of training set: ',len(self.trainSet))
+        print('length of training set: ',len(self.testSet))
+
     def __sigmoid(self,z):
         from math import exp
         #print('z',z)
@@ -115,18 +158,17 @@ class LogisticRegression():
         return npmatrix
        
     def __derivativeWRTTheta(self,xi,yi,thetai,i):
-        print('derivative:')
-        print('xi*(yi-h0(theta*xi)) equals: ',xi[i],'*(',yi,'-',self.__sigmoid(np.dot(xi,thetai.transpose())),')')
-        print(xi[i]*(yi-self.__sigmoid(np.dot(xi,thetai.transpose()))))
+        #print('derivative:')
+        #print('xi*(yi-h0(theta*xi)) equals: ',xi[i],'*(',yi,'-',self.__sigmoid(np.dot(xi,thetai.transpose())),')')
+        #print(xi[i]*(yi-self.__sigmoid(np.dot(xi,thetai.transpose()))))
         return xi[i]*(yi-self.__sigmoid(np.dot(xi,thetai.transpose())))
   
         
         #this never needs to be accessed ouside of this class so is private 
     def __gradientDescent(self,featureMatrix):
+        print('\n\n gradientDescent')
         import pandas as pd
         import numpy as np
-        import time as time
-        st=time.clock()    
         #weights=np.array(initialWeights)
         #print(weights)
         #print(featureMatrix)
@@ -144,11 +186,6 @@ class LogisticRegression():
             for weight in range(len(self.parameterVector)):
                 #compute the derivative
                 print('\n\nweight',weight)
-                #print(self.predictors[:10])
-                #print(self.parameterVector)
-                #derivative=(-1/len(self.predictors[:,weight]))*sum(map(lambda x,y:self.__derivativeWRTTheta(x,y,tmp),self.predictors,self.uniqueEncodedLevels))
-                #s=sum([self.__derivativeWRTTheta(self.predictors[i],self.uniqueEncodedLevels[i],tmp) for i in range(len(self.predictors))])
-                
                 s=0
                 print('encoded target:',self.encodedTarget)
                 for i in range(len(self.predictors)):
@@ -206,12 +243,14 @@ arr2=np.array([[1],[1],[1],[1]])
 
 df = pd.DataFrame(l1,columns=list('ABC'))
 logReg=LogisticRegression(df.columns[:-1],df.columns[-1], df)
+logReg.trainTestSplit(0.8)
 logReg.fit()
-print(logReg.predict_proba(df[df.columns[:-1]]))
-print(logReg.predict_class(df[df.columns[:-1]]))
-test=[[4,4],[5,10]]
-print(logReg.predict_class(pd.DataFrame(test,columns=list('AB'))))
 
+print('probability predictions for whole dataset: ',logReg.predict_proba(df[df.columns[:-1]]))
+print('class predictions for whole dataset: ',logReg.predict_class(df[df.columns[:-1]]))
+test=[[4,4],[5,10]]
+#print(logReg.predict_class(pd.DataFrame(test,columns=list('AB'))))
+#logReg.trainTestSplit(0.7)
 
 #This gives the first row of the dataframe
 #df[0:1]
@@ -222,4 +261,12 @@ print(logReg.predict_class(pd.DataFrame(test,columns=list('AB'))))
         
 
 #all_data = np.append(arr2,arr, 1)
-        
+#l1=c(1,2,1,4,4,5)
+#l2=c(1,1,2,5,4,4)
+#l3=c(0,0,0,1,1,1)
+
+#dframe=data.frame(l1,l2,l3)
+#model <- glm(l3 ~.,family=binomial(link='logit'),data=dframe)
+#summary(model)
+#model
+       
