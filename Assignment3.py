@@ -30,9 +30,17 @@ Created on Sun Nov 13 17:57:59 2016
 #TODO:
 #1).tidy up current class
 #2).Vectorise current implementation
-#3).Implement multiclass 1 vs. all predictions
+#3).Implement multiclass 1 vs. all predictions  y
 #4).Figure how to recover the unscaled weights
 #5).Rename everything to train/test to be clear what's what
+#6).Think about returning log odds
+
+
+	
+
+#Numpy matrices are strictly 2-dimensional, while numpy arrays (ndarrays) are N-dimensional. Matrix objects are a subclass of ndarray, so they inherit all the attributes and methods of ndarrays.
+
+#The main advantage of numpy matrices is that they provide a convenient notation for matrix multiplication: if a and b are matrices, then a*b is their matrix product.
 
 
 class LogisticRegression():
@@ -64,13 +72,34 @@ class LogisticRegression():
         #dataframe['intercept']=1
         self.predictors=np.matrix(dataframe[predictors],dtype=float)
         self.nsamples=np.shape(self.predictors)[0]
+        #add intercept to the predictor features
+        self.predictors=self.__addIntercept(self.predictors)
         self.npredictors=np.shape(self.predictors)[1]
+        print('predictor shape')
+        print(self.predictors.shape)
+        
         #np.hstack((np.zeros(shape=(X.shape[0],1), dtype='float') + 1, X))
         #print('predictors')
         #print(self.predictors)
         self.scaleFactor=self.predictors.max()
         self.target=np.array(dataframe[target])
         self.targetLevels=dataframe[target].unique()
+        if len(self.targetLevels)<2:
+            print('The target variable has less than 2 unique values and cannot be classified!')
+        else:
+            print('here is where the target variable is split')
+            if len(self.targetLevels)>2:
+                #each column represents the weights of a model, number of rows gives the number of weights in each model
+                self.weightMatrix=np.zeros((self.predictors.shape[1],len(self.targetLevels)))
+                #self.weightMatrix[0]=[i for i in range(len(self.targetLevels))]
+                #print([len(self.targetLevels)])
+                print('self.weightMatrix')
+                print(self.weightMatrix)
+            else:
+                self.weightMatrix=np.zeros((self.predictors.shape[1],1))
+                print([len(self.targetLevels)])
+                print('self.weightMatrix')
+                print(self.weightMatrix)
         print('unique levels:')
         print(self.targetLevels)
         self.uniqueEncodedLevels=[i for i in range(len(dataframe[target].unique()))]
@@ -87,8 +116,8 @@ class LogisticRegression():
         self.parameterVector=np.array([0 for i in range(self.predictors.shape[1]+1)])
         #self.parameterVector=[0 for i in range(len(predictors))]
         self.tolerance=0.00002
-        self.learningRate=1.2
-        self.maxiter=2
+        self.learningRate=0.8
+        self.maxiter=100
       
     #have multiple implementations of data preprocessing code, do it all here  
     def __preprocess(self, data):
@@ -96,18 +125,6 @@ class LogisticRegression():
 
         #Validations complete
 
-    #fit should have 0 or 1 as the target ALWAYS and should probably take a training set to fit
-    def fit(self):
-        print('\n\n fit')
-        print('Fitting Logistic Regression Model to ',self.TrainTestRatio,' of the dataset')
-        print('length of predictors: ',len(self.predictors))
-        print(self.predictors,self.encodedTarget)
-        import time
-        st=time.clock()
-        self.__gradientDescent(self.predictors)
-        print('Fit in ',time.clock()-st, ' seconds')
-        print('gradient descent results: ')
-        print(self.parameterVector)
     
     def trainTestSplit(self, ratio):
         '''Ratio is the desired ratio for the train set size to test set size, no return value'''
@@ -135,6 +152,7 @@ class LogisticRegression():
         self.scaleFactor=self.predictors.max()
         print('length of training set: ',len(self.trainSet))
         print('length of training set: ',len(self.testSet))
+        
 
     def __sigmoid(self,z):
         from math import exp
@@ -156,47 +174,76 @@ class LogisticRegression():
         print('scaled matrix:')
         print(npmatrix)
         return npmatrix
-       
+    #takes in single xi value
     def __derivativeWRTTheta(self,xi,yi,thetai,i):
         #print('derivative:')
         #print('xi*(yi-h0(theta*xi)) equals: ',xi[i],'*(',yi,'-',self.__sigmoid(np.dot(xi,thetai.transpose())),')')
         #print(xi[i]*(yi-self.__sigmoid(np.dot(xi,thetai.transpose()))))
         return xi[i]*(yi-self.__sigmoid(np.dot(xi,thetai.transpose())))
-  
         
-        #this never needs to be accessed ouside of this class so is private 
-    def __gradientDescent(self,featureMatrix):
+    #fit should have 0 or 1 as the target ALWAYS and should probably take a training set to fit
+    def fit(self):
+        print('\n\n FIT')
+        print('Fitting Logistic Regression Model to ',self.TrainTestRatio*100,'% of the dataset')
+        print('length of predictors: ',len(self.predictors))
+        print(self.predictors,self.encodedTarget)
+        print('number of models equals', self.weightMatrix.shape[1])
+        import time
+        st=time.clock()
+        #apply gradient descent using each set of weights in weight matrix
+        print('columns:')
+        for columnNo in range(len(self.weightMatrix.transpose())):
+            print(self.weightMatrix.transpose()[columnNo])
+            print('One vs. all:',self.targetLevels[columnNo])
+            print(self.encodedTarget)
+            print(self.targetLevels[columnNo])
+            oneVSAllTarget=np.array(list(map(lambda x:1 if x==self.targetLevels[columnNo] else 0,self.encodedTarget)))
+            print('oneVSAllTarget',oneVSAllTarget)
+            self.weightMatrix.transpose()[columnNo]=self.__gradientDescent(self.weightMatrix.transpose()[columnNo],self.predictors,oneVSAllTarget)
+        #self.weightMatrix=np.apply_along_axis(self.__gradientDescent,0,self.weightMatrix,self.predictors,self.encodedTarget)
+        #self.__gradientDescent(self.predictors)
+        print('Fit in ',time.clock()-st, ' seconds')
+        print('gradient descent results: ')
+        print(self.weightMatrix)
+        
+        
+    #this never needs to be accessed ouside of this class so is private 
+    #Given a feature matrix and a weight vector and a target column, return the optimised weight matrix
+    def __gradientDescent(self,weightVector,featureMatrix, targetVector):
         print('\n\n gradientDescent')
+        print('One vs. all:')
+        print(targetVector)
         import pandas as pd
         import numpy as np
-        #weights=np.array(initialWeights)
+        weights=np.array(weightVector)
+        featureMatrix=self.__scaleFeatures(featureMatrix)
         #print(weights)
         #print(featureMatrix)
         #condition is that total gradient is greater than tolerance
-        self.predictors=self.__scaleFeatures(self.predictors)
-        self.predictors=self.__addIntercept(self.predictors)
+        #self.predictors=self.__scaleFeatures(self.predictors)
+        #self.predictors=self.__addIntercept(self.predictors)
         condition=True
         iterations=0
         while(condition and iterations<self.maxiter):
+            #implement one vs all here
             gradSquareSum=0 
-            print('\n\n\n\n starting weights: ',self.parameterVector)
-            print('predictions: ', self.predictOutcome(self.predictors,self.parameterVector))
-            tmp=np.copy(self.parameterVector)
+            print('\n\n\n\n starting weights: ',weights)
+            print('predictions: ', self.predictOutcome(featureMatrix,weights))
+            print('len of feature matrix', len(featureMatrix))
+            tmp=np.copy(weights)
             newparams=[]            
-            for weight in range(len(self.parameterVector)):
+            for weight in range(len(weights)):
                 #compute the derivative
                 print('\n\nweight',weight)
                 s=0
-                print('encoded target:',self.encodedTarget)
-                for i in range(len(self.predictors)):
+                print('encoded target:',targetVector)
+                for i in range(len(featureMatrix)):
                     #print('i',i)
                     #print('der',self.__derivativeWRTTheta(self.predictors[i],self.encodedTarget[i],tmp))
-                    print('working on row: ',i, self.predictors[i], 'yi',self.encodedTarget[i])
-                    s=s+self.__derivativeWRTTheta(self.predictors[i],self.encodedTarget[i],tmp,weight)
-                    
-               
+                    print('working on row: ',i, featureMatrix[i], 'yi',targetVector[i])
+                    s=s+self.__derivativeWRTTheta(featureMatrix[i],targetVector[i],tmp,weight)                                  
                 print('total derivative',s)
-                derivative=(-1/len(self.dataframe))*s                
+                derivative=(-1/featureMatrix.shape[0])*s                
                 print(' averaged derivative for theta ',weight)
                 print(derivative)
                 #print('here',newparams[weight])
@@ -205,20 +252,81 @@ class LogisticRegression():
                 print('newparams',newparams)
                 gradSquareSum+=derivative**2
             print('gradSquareSum: ',gradSquareSum)
-            self.parameterVector=np.copy(newparams)
+            weights=np.copy(newparams)
             if(gradSquareSum<self.tolerance):
                 condition=False
             iterations+=1
-        return 
-     #This should only be called once the weights vector has been optimised
+        return weights
+  
+        
+    #this never needs to be accessed ouside of this class so is private 
+    #Given a feature matrix and a weight matrix and a target column, return the optimised weight matrix
+    #def __gradientDescent(self,featureMatrix,weightMatrix, targetVector):
+#        print('
+#
+# gradientDescent')
+#        import pandas as pd
+#        import numpy as np
+#        #weights=np.array(initialWeights)
+#        #print(weights)
+#        #print(featureMatrix)
+#        #condition is that total gradient is greater than tolerance
+#        self.predictors=self.__scaleFeatures(self.predictors)
+#        #self.predictors=self.__addIntercept(self.predictors)
+#        condition=True
+#        iterations=0
+#        while(condition and iterations<self.maxiter):
+#            gradSquareSum=0 
+#            print('
+#
+#
+#
+# starting weights: ',self.parameterVector)
+#            print('predictions: ', self.predictOutcome(self.predictors,self.parameterVector))
+#            tmp=np.copy(self.parameterVector)
+#            newparams=[]            
+#            for weight in range(len(self.parameterVector)):
+#                #compute the derivative
+#                print('
+#
+#weight',weight)
+#                s=0
+#                print('encoded target:',self.encodedTarget)
+#                for i in range(len(self.predictors)):
+#                    #print('i',i)
+#                    #print('der',self.__derivativeWRTTheta(self.predictors[i],self.encodedTarget[i],tmp))
+#                    print('working on row: ',i, self.predictors[i], 'yi',self.encodedTarget[i])
+#                    s=s+self.__derivativeWRTTheta(self.predictors[i],self.encodedTarget[i],tmp,weight)
+#
+#
+#                print('total derivative',s)
+#                derivative=(-1/len(self.dataframe))*s                
+#                print(' averaged derivative for theta ',weight)
+#                print(derivative)
+#                #print('here',newparams[weight])
+#                newparams.append(tmp[weight]-self.learningRate*derivative)
+#                print('newparams[weight]',newparams[weight])
+#                print('newparams',newparams)
+#                gradSquareSum+=derivative**2
+#            print('gradSquareSum: ',gradSquareSum)
+#            self.parameterVector=np.copy(newparams)
+#            if(gradSquareSum<self.tolerance):
+#                condition=False
+#            iterations+=1
+#        return 
+#     #This should only be called once the weights vector has been optimised
     def predictOutcome(self,feature, weights):
+        print('\n\n PREDICT OUTCOME')
         import numpy as np
-        print('feature',feature)
+        print('feature',np.array(feature))
         print('weights',weights)
-        predictions=list(map(lambda x: self.__sigmoid(x),np.dot(feature,weights.transpose())))
+        print('dot product',np.dot(feature,weights.transpose()))
+        predictions=list(map(lambda x: self.__sigmoid(x),np.dot(np.array(feature),weights.transpose())))
         #print('predictions',predictions)    
         return predictions
-    
+
+    #this should take in a dataframe, and check that the relevant columns are present with relevant levels, then split into a feature matrix
+    #and a target array and then run the probability predictions
     def predict_proba(self,x):
         print('pre x matrix',x)
         x=np.matrix(x,dtype=float)
@@ -226,7 +334,16 @@ class LogisticRegression():
         print('post scaled',x)
         x=self.__addIntercept(x)
         print('x',x)
-        return list(map(lambda x: self.__sigmoid(x),np.dot(x,self.parameterVector.transpose())))
+        if len(self.uniqueEncodedLevels)==2:
+            return list(map(lambda x: self.__sigmoid(x),np.dot(x,self.weightMatrix)))
+        else:
+            f=np.vectorize(self.__sigmoid)
+            print(np.dot(x,self.weightMatrix))
+            result=f(np.dot(x,self.weightMatrix))
+            print(result)
+            #print(np.apply_along_axis(,1,np.dot(x,self.weightMatrix)))
+            return np.apply_along_axis(np.argmax,1,result)
+        #return list(map(lambda x: self.__sigmoid(x),np.dot(x,self.weightMatrix)))
     
     def predict_class(self,x):
         return list(map(lambda x: 1 if x>0.5 else 0, self.predict_proba(x)))
@@ -237,18 +354,42 @@ import numpy as np
 #logReg=LogisticRegression(dframe.columns[:-1],dframe.columns[-1], dframe)
 #logReg.fit()
         
-l1=[[1,1,0],[2,1,0],[1,2,0],[4,5,1],[4,4,1],[5,4,1]]
-arr=np.array(l1)
-arr2=np.array([[1],[1],[1],[1]])
-
-df = pd.DataFrame(l1,columns=list('ABC'))
+#Test 1        
+l=[[1,1,0],[2,1,0],[1,2,0],[4,5,1],[4,4,1],[5,4,2]]
+df = pd.DataFrame(l,columns=list('ABC'))
 logReg=LogisticRegression(df.columns[:-1],df.columns[-1], df)
-logReg.trainTestSplit(0.8)
 logReg.fit()
+logReg.trainTestSplit(0.9)
+print('Class predictions:')
+logReg.predict_proba(df[df.columns[:-1]])
 
-print('probability predictions for whole dataset: ',logReg.predict_proba(df[df.columns[:-1]]))
-print('class predictions for whole dataset: ',logReg.predict_class(df[df.columns[:-1]]))
-test=[[4,4],[5,10]]
+#passing in a 5x3 dataframe with 3 unique values. Expecting to see 3x3 weightMatrix 
+
+#Test 2      
+l1=[[1,1,0],[2,1,0],[1,2,0],[4,5,1],[4,4,1],[5,4,1]]
+df1 = pd.DataFrame(l1,columns=list('ABC'))
+logReg1=LogisticRegression(df1.columns[:-1],df1.columns[-1], df1)
+logReg1.fit()
+logReg1.predict_proba(df1[df1.columns[:-1]])
+#class predictions should be [0,0,0,1,1,1]
+logReg1.predict_class(df1[df1.columns[:-1]])
+#passing in a 5x3 dataframe with 2 unique values. Expecting to see 3x1 weightMatrix 
+
+#Test 2
+l2=[[1,1,2,0],[2,1,2,0],[1,2,3,0],[4,5,6,1],[4,4,5,1],[5,7,5,2]]
+df2=pd.DataFrame(l2,columns=list('ABCD'))
+logReg2=LogisticRegression(df2.columns[:-1],df2.columns[-1], df2)
+logReg2.fit()
+logReg2.predict_proba(df2[df2.columns[:-1]])
+#passing in a 5x4 dataframe with 3 unique values. Expecting to see 4x3 weightMatrix 
+
+
+#logReg.trainTestSplit(1)
+#logReg.fit()
+
+#print('probability predictions for whole dataset: ',logReg.predict_proba(df[df.columns[:-1]]))
+#print('class predictions for whole dataset: ',logReg.predict_class(df[df.columns[:-1]]))
+#test=[[4,4],[5,10]]
 #print(logReg.predict_class(pd.DataFrame(test,columns=list('AB'))))
 #logReg.trainTestSplit(0.7)
 
@@ -269,4 +410,14 @@ test=[[4,4],[5,10]]
 #model <- glm(l3 ~.,family=binomial(link='logit'),data=dframe)
 #summary(model)
 #model
+       
+       
+def commentCode(string):
+    returnString=''
+    for line in string.split('\n'):
+        returnString+='\n#'+line
+    print(returnString)
+       
+
+       
        
