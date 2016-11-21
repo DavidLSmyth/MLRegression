@@ -34,6 +34,8 @@ Created on Sun Nov 13 17:57:59 2016
 #4).Figure how to recover the unscaled weights
 #5).Rename everything to train/test to be clear what's what
 #6).Think about returning log odds
+#7).Give a way for users to enter non-linear combinations of the data
+#8).Make a scale_factors array which keeps each scale factor for each column
 
 
 	
@@ -62,9 +64,17 @@ class LogisticRegression():
             return
         #if target is in the dataframe, make sure that it isn't continuous, not sure exactly how to do this
         else:
-            pass
+            self.__preprocess(predictors, target, dataframe)
         #initally set the whole of the 
         self.TrainTestRatio=1
+        
+        #self.parameterVector=[0 for i in range(len(predictors))]
+        self.tolerance=0.00002
+        self.learningRate=0.8
+        self.maxiter=10
+      
+    #have multiple implementations of data preprocessing code, do it all here  
+    def __preprocess(self, predictors,target,dataframe):
         self.targetName=target
         #this might not be necessary
         self.predictorNames=predictors
@@ -77,29 +87,26 @@ class LogisticRegression():
         self.npredictors=np.shape(self.predictors)[1]
         print('predictor shape')
         print(self.predictors.shape)
-        
-        #np.hstack((np.zeros(shape=(X.shape[0],1), dtype='float') + 1, X))
-        #print('predictors')
-        #print(self.predictors)
         self.scaleFactor=self.predictors.max()
+        print('self.scaleFactor:')
+        print(self.scaleFactor)
         self.target=np.array(dataframe[target])
         self.targetLevels=dataframe[target].unique()
         if len(self.targetLevels)<2:
             print('The target variable has less than 2 unique values and cannot be classified!')
         else:
-            print('here is where the target variable is split')
-            if len(self.targetLevels)>2:
+            if len(self.targetLevels)>=2:
                 #each column represents the weights of a model, number of rows gives the number of weights in each model
                 self.weightMatrix=np.zeros((self.predictors.shape[1],len(self.targetLevels)))
                 #self.weightMatrix[0]=[i for i in range(len(self.targetLevels))]
                 #print([len(self.targetLevels)])
                 print('self.weightMatrix')
                 print(self.weightMatrix)
-            else:
-                self.weightMatrix=np.zeros((self.predictors.shape[1],1))
-                print([len(self.targetLevels)])
-                print('self.weightMatrix')
-                print(self.weightMatrix)
+            #else:
+            #    self.weightMatrix=np.zeros((self.predictors.shape[1],1))
+            #    print([len(self.targetLevels)])
+            #    print('self.weightMatrix')
+            #    print(self.weightMatrix)
         print('unique levels:')
         print(self.targetLevels)
         self.uniqueEncodedLevels=[i for i in range(len(dataframe[target].unique()))]
@@ -114,14 +121,6 @@ class LogisticRegression():
         self.dataframe=dataframe
         #add 1 because of the intercept value
         self.parameterVector=np.array([0 for i in range(self.predictors.shape[1]+1)])
-        #self.parameterVector=[0 for i in range(len(predictors))]
-        self.tolerance=0.00002
-        self.learningRate=0.8
-        self.maxiter=100
-      
-    #have multiple implementations of data preprocessing code, do it all here  
-    def __preprocess(self, data):
-        pass
 
         #Validations complete
 
@@ -183,6 +182,8 @@ class LogisticRegression():
         
     #fit should have 0 or 1 as the target ALWAYS and should probably take a training set to fit
     def fit(self):
+        '''The fit method fits n models to the data using a 1 vs. all strategy, where n represents the unique number of levels of the 
+        target variable'''
         print('\n\n FIT')
         print('Fitting Logistic Regression Model to ',self.TrainTestRatio*100,'% of the dataset')
         print('length of predictors: ',len(self.predictors))
@@ -217,11 +218,7 @@ class LogisticRegression():
         import numpy as np
         weights=np.array(weightVector)
         featureMatrix=self.__scaleFeatures(featureMatrix)
-        #print(weights)
-        #print(featureMatrix)
-        #condition is that total gradient is greater than tolerance
-        #self.predictors=self.__scaleFeatures(self.predictors)
-        #self.predictors=self.__addIntercept(self.predictors)
+        #condition initally starts as true
         condition=True
         iterations=0
         while(condition and iterations<self.maxiter):
@@ -328,21 +325,24 @@ class LogisticRegression():
     #this should take in a dataframe, and check that the relevant columns are present with relevant levels, then split into a feature matrix
     #and a target array and then run the probability predictions
     def predict_proba(self,x):
+        '''The predict_proba method returns a list of predicted values for each row in the provided x value. 
+        The data in x must align with the provided training data'''
         print('pre x matrix',x)
         x=np.matrix(x,dtype=float)
         x=self.__scaleFeatures(x)
         print('post scaled',x)
         x=self.__addIntercept(x)
         print('x',x)
-        if len(self.uniqueEncodedLevels)==2:
-            return list(map(lambda x: self.__sigmoid(x),np.dot(x,self.weightMatrix)))
-        else:
-            f=np.vectorize(self.__sigmoid)
-            print(np.dot(x,self.weightMatrix))
-            result=f(np.dot(x,self.weightMatrix))
-            print(result)
+        #if len(self.uniqueEncodedLevels)==2:
+           # return list(map(lambda x: self.__sigmoid(x),np.dot(x,self.weightMatrix)))
+        #else:
+        f=np.vectorize(self.__sigmoid)
+        print(np.dot(x,self.weightMatrix))
+        result=f(np.dot(x,self.weightMatrix))
+        print(result)
             #print(np.apply_along_axis(,1,np.dot(x,self.weightMatrix)))
-            return np.apply_along_axis(np.argmax,1,result)
+        return list(np.apply_along_axis(np.argmax,1,result))
+        #list(map(lambda x: self.targetName.index(x),
         #return list(map(lambda x: self.__sigmoid(x),np.dot(x,self.weightMatrix)))
     
     def predict_class(self,x):
@@ -355,7 +355,7 @@ import numpy as np
 #logReg.fit()
         
 #Test 1        
-l=[[1,1,0],[2,1,0],[1,2,0],[4,5,1],[4,4,1],[5,4,2]]
+l=[[1,1,'zero'],[2,1,'zero'],[1,2,'zero'],[4,5,'one'],[4,4,'one'],[5,4,'one']]
 df = pd.DataFrame(l,columns=list('ABC'))
 logReg=LogisticRegression(df.columns[:-1],df.columns[-1], df)
 logReg.fit()
@@ -376,14 +376,17 @@ logReg1.predict_class(df1[df1.columns[:-1]])
 #passing in a 5x3 dataframe with 2 unique values. Expecting to see 3x1 weightMatrix 
 
 #Test 2
-l2=[[1,1,2,0],[2,1,2,0],[1,2,3,0],[4,5,6,1],[4,4,5,1],[5,7,5,2]]
+l2=[[1,1,2,0],[2,1,2,0],[1,2,3,0],[4,5,5,1],[4,4,5,1],[7,7,7,2]]
 df2=pd.DataFrame(l2,columns=list('ABCD'))
 logReg2=LogisticRegression(df2.columns[:-1],df2.columns[-1], df2)
 logReg2.fit()
 logReg2.predict_proba(df2[df2.columns[:-1]])
 #passing in a 5x4 dataframe with 3 unique values. Expecting to see 4x3 weightMatrix 
-
-
+owls=pd.read_csv('/home/user15/Downloads/owls15.csv')
+owls
+logReg3=LogisticRegression(owls.columns[:-1],owls.columns[-1],owls)
+logReg3.fit()
+logReg3.predict_proba(owls[owls.columns[:-1]])
 #logReg.trainTestSplit(1)
 #logReg.fit()
 
@@ -416,6 +419,16 @@ def commentCode(string):
     returnString=''
     for line in string.split('\n'):
         returnString+='\n#'+line
+    print(returnString)
+    
+def commentPrint(string):
+    returnString=''
+    for line in string.split('\n'):
+        print(line.strip()[0:5])
+        if line.strip()[0:5]=='print':
+            returnString+='\n#'+line
+        else:
+            returnString+='\n'+line
     print(returnString)
        
 
