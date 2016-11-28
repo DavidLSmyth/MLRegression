@@ -1,12 +1,5 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sun Nov 27 20:02:24 2016
-
-@author: David Smyth
-"""
-
-# -*- coding: utf-8 -*-
-"""
 Created on Sun Nov 13 17:57:59 2016
 
 @author: David Smyth
@@ -19,7 +12,7 @@ Created on Sun Nov 13 17:57:59 2016
 #2).Takes in a data set, a formula (predictors & target) and fits theta vector to minimise cost function
 #Formula will have to allow for non-linear terms
 #Gradient Descent requires learning rate, tolerance etc.
-#3).Option to return theta values, std. errors would also be nice
+#3).Option to return theta values, std. errors & p values would also be nice
 
 #Try plotting non-convex J(theta) cost function for better understanding
 
@@ -27,13 +20,13 @@ Created on Sun Nov 13 17:57:59 2016
 #1).tidy up current class  y
 #2).Vectorise current implementation  y
 #3).Implement multiclass 1 vs. all predictions  y
-#4).Rename everything to train/test to be clear what's what  y
+#4).Rename everything to train/test to be clear what's what  y - if not named test assume train
 #5).Give a way for users to enter non-linear combinations of the data
-#6).Make a scale_factors array which keeps each scale factor for each column
+#6).Make a scale_factors array which keeps each scale factor for each column  y
 
+#Difference between numpy matrices and numpy arrays:
 #Numpy matrices are strictly 2-dimensional, while numpy arrays (ndarrays) are N-dimensional.
 # Matrix objects are a subclass of ndarray, so they inherit all the attributes and methods of ndarrays.
-
 #The main advantage of numpy matrices is that they provide a convenient notation for matrix 
 #multiplication: if a and b are matrices, then a*b is their matrix product.
 
@@ -47,7 +40,7 @@ class LogisticRegression():
     def __init__(self, predictors, target, dataframe,learningRate=1,regularizationValue=0.1):
         import pandas as pd
         import numpy as np
-        '''Pass in a list of predictors as strings, a target as a string, and a pandas dataframe'''
+        '''Pass in a list of predictors as strings, a target as a string, a pandas dataframe, optional: learning rate and regularization value'''
         #do all error checking here
         #check that the predictors & target exist in the dataframe
         if(type(dataframe)!=pd.core.frame.DataFrame):
@@ -61,54 +54,53 @@ class LogisticRegression():
             print(target+' is not a valid column in the dataframe')
             return
         #if target is in the dataframe, make sure that it isn't continuous, not sure exactly how to do this
+        elif len(dataframe[target].unique())>=len(dataframe[target])*0.8:
+            print('Logistic regression may not be suited to this problem, there are ',len(dataframe['target'].unique()),
+            ' predictors which indicated this may not be a classification task')                                                                           
         else:
-            pass
-        #initally set the whole of the dataset for training
-        self.TrainTestRatio=1
-        #The names and levels of things do not change can be set here, everything else is passed to preprocess
-        self.targetName=target
-        self.predictorNames=predictors
-        self.target=np.array(dataframe[target])
-        self.targetLevels=dataframe[target].unique()
-        self.uniqueEncodedLevels=[i for i in range(len(dataframe[target].unique()))]
-        self.dataframe=dataframe
-        self.__preprocessTrain(self.TrainTestRatio)
-        #could make these private using __
-        self.tolerance=0.0000002
-        self.learningRate=learningRate
-        self.lambdaValue=regularizationValue
-        self.maxiter=8000
+            #initally set the whole of the dataset for training
+            self.TrainTestRatio=1
+            #The names and levels of things do not change can be set here, everything else is passed to preprocess
+            self.targetName=target
+            self.predictorNames=predictors
+            self.target=np.array(dataframe[target])
+            self.targetLevels=dataframe[target].unique()
+            self.uniqueEncodedLevels=[i for i in range(len(dataframe[target].unique()))]
+            self.dataframe=dataframe
+            #now preprocess the data that can change once the class has been initialised
+            self.__preprocessTrain(self.TrainTestRatio)
+            #could make these private using __
+            self.tolerance=0.0000002
+            self.learningRate=learningRate
+            self.lambdaValue=regularizationValue
+            self.maxiter=8000
       
-    #have multiple implementations of data preprocessing code, do it all here. 
+    #Do all data preprocessing here rather than having multiple implementations 
     def __preprocessTrain(self,ratio):
         import numpy as np
-        #randoms=np.random.uniform(0,1,len(self.dataframe))
+        #randomly shuffle the data
         newNos=np.random.permutation(self.dataframe.index)
+        #reindex the dataframe and divide into train and test set
         self.trainSet=self.dataframe.reindex(newNos).head(np.round(len(self.dataframe)*ratio))
         self.testSet=self.dataframe.reindex(newNos).tail(np.round(len(self.dataframe)*(1-ratio)))
-        #self.trainSet=self.dataframe.iloc[randoms<ratio].copy(deep=True)
+        #create a train predictor matrix
         self.predictors=np.matrix(self.trainSet[self.predictorNames],dtype=float)
-        self.nsamples=np.shape(self.predictors)[0]
         #add intercept to the predictor features
         self.predictors=self.__addIntercept(self.predictors)
-        self.npredictors=np.shape(self.predictors)[1]
+        #create a scaleFactor vector to record how much each column has been scaled by
         self.scaleFactor=self.predictors.max()
-        #if len(self.dataframe.iloc[randoms>=ratio].copy(deep=True)!=0):
-        if len(self.trainSet)!=len(self.dataframe):
-            #self.testSet=self.dataframe.iloc[randoms>=ratio].copy(deep=True) 
-            self.testPredictors=np.matrix(self.testSet[self.predictorNames],dtype=float)
-            self.testnsamples=np.shape(self.testPredictors)[0]
-            self.testNPredictors=np.shape(self.predictors)[1]
-            self.encodedTargetTest=np.array(self.testSet[self.targetName])
+        #It's useful to have a separate target vector
         self.encodedTarget=np.array(self.trainSet[self.targetName])
+        #if the test set has at least one value, then split it up in a similar way to the train set
+        if len(self.trainSet)!=len(self.dataframe):
+            self.testPredictors=np.matrix(self.testSet[self.predictorNames],dtype=float)
+            self.encodedTargetTest=np.array(self.testSet[self.targetName])
         if len(self.targetLevels)<2:
             print('The target variable has less than 2 unique values and cannot be classified!')
         else:
             if len(self.targetLevels)>=2:
                 #each column represents the weights of a model, number of rows gives the number of weights in each model
                 self.weightMatrix=np.zeros((self.predictors.shape[1],len(self.targetLevels)))
-        self.scaleFactor=self.predictors.max()
-        #Validations complete
 
     
     def trainTestSplit(self, ratio):
@@ -116,31 +108,39 @@ class LogisticRegression():
         self.TrainTestRatio=ratio
         self.__preprocessTrain(ratio)
         print('Data succcessfully split into: ',len(self.trainSet),' training samples and ',len(self.testSet),' testing samples')
-        
+    
+    #simply adds an intercept to a featureMatrix
     def __addIntercept(self,featureMatrix):
         return np.append(np.array([[1] for i in range(np.shape(featureMatrix)[0])],dtype=float),featureMatrix,1)
       
+    #scales the features of a featureMatrix to speed up convergence of gradient descent
     def __scaleFeatures(self,npmatrix):
-        #npmatrix=np.apply_along_axis(lambda x: x/max(x),0,npmatrix)
         return np.apply_along_axis(lambda x: x/max(x),0,npmatrix)
         
-    #takes in single xi value, redundant since vectorised but leaving in for reference
+    #Redundant since vectorised but leaving in for reference
     def __derivativeWRTTheta(self,xi,yi,thetai,i):
         return xi[i]*(yi-self.__sigmoid(np.dot(xi,thetai.transpose())))
+    
+    #Again private, hypothesis function predicts the probability of each data point in the feature matrix of being a one based on given weights
+    def __sigmoid(self, X, Weight):
+        return 1.0/(1+np.exp(- np.dot(X,Weight)))
         
-    #fit should have 0 or 1 as the target ALWAYS and should probably take a training set to fit
+    #fit should have 0 or 1 as the target ALWAYS and should take a training set to fit
     def fit(self,columnNames=[],verbose=True):
         '''The fit method fits n models to the data using a 1 vs. all strategy, where n represents the unique number of levels of the 
-        target variable'''
+        target variable. verbose=False supresses the model summary output.'''
         #here subset some of the columns for the user to specify only certain columns
         if(columnNames!=[]):
+            #subset to only the columns that the user provides
             pass
         print('\nFitting Logistic Regression Model to ','%s'%float('%.5g' % (self.TrainTestRatio*100)),'% of the dataset')
         import time
         st=time.clock()
         #apply gradient descent using each set of weights in weight matrix
         for columnNo in range(len(self.weightMatrix.transpose())):
+            #Map ith variable to 1 and all other levels in the target vector to 0
             oneVSAllTarget=np.array(list(map(lambda x:1 if x==self.targetLevels[columnNo] else 0,self.encodedTarget)))
+            #Update the weights of the ith model (corresponding to a column in self.weightMatrix) using gradient descent
             self.weightMatrix.transpose()[columnNo]=self.__gradientDescent(self.weightMatrix.transpose()[columnNo],self.predictors,oneVSAllTarget)
         print('Fit in ','%s'% float('%.5g'%(time.clock()-st)), ' seconds')
         if verbose:
@@ -161,15 +161,18 @@ class LogisticRegression():
     #featureMatrix is self.predictors
     def __gradientDescent(self,weightVector,featureMatrix, targetVector):
         import time
-        start=time.clock()
         import pandas as pd
         import numpy as np
+        start=time.clock()
         weights=np.array(weightVector)
+        #Scale features to speed up gradient descent
         featureMatrix=self.__scaleFeatures(featureMatrix)
         #condition initally starts as true, gives a do-while effect
         condition=True
         iterations=0
+        #Record gradientMagnitude to plot convergence
         self.gradientMagnitude=[]
+        #No do-while structure in python, but while condition, and then update condition is a good substitute
         while(condition and iterations<self.maxiter):
             weightsCopy=np.copy(weights)
             #compute derivative of cost function
@@ -178,69 +181,93 @@ class LogisticRegression():
             s10=s1[0]
             #regularise everything else
             s1+=(weightsCopy*self.lambdaValue)/(featureMatrix.shape[0])
+            #reset pre-regularised intercept
             s1[0]=s10
             #update weights based on derivative
             weightsCopy-=self.learningRate*(s1)
             weights=np.copy(weightsCopy)
             gradSquareSum=np.dot(s1,s1.T)
             self.gradientMagnitude.append(gradSquareSum)
-            if(gradSquareSum<self.tolerance or (time.clock()-start>5)):
+            #Gradient descent stops running when:
+            #either iterations exceeds max. number of iterations, the gradient becomes acceptable small or 8 seconds elapse.
+            if(gradSquareSum<self.tolerance or (time.clock()-start>8)):
                 condition=False
             iterations+=1
+        #return optimised weights vector
         return weights
 
-    def __sigmoid(self, X, Weight):
-        return 1.0/(1+np.exp(- np.dot(X,Weight)))
+
 
     #plotConvergence function is provided so that the user can check if the algorithm has converged to a solution if there 
     #are any issues with prediction
     def plotConvergence(self):
+        '''Provides a plot of gradient magnitude vs. iteration number for gradient descent algorihtm.'''
         #check here whether self.gradientMagnitude exists
         import matplotlib.pyplot as plt
-        print('len gradientMagnitude: ',len(self.gradientMagnitude))
+        #Plot iteration number vs. gradient magnitude for each iteration
         plt.plot([i for i in range(len(self.gradientMagnitude))],self.gradientMagnitude)
         plt.xlabel('Iteration number')
         plt.ylabel('Magnitude of derivative')
         plt.title('Plot of gradient magnitude vs. iteration')
         
     def predict_test(self,toFile=False):
+        #Check that the testSet actually exists!
         if len(self.testSet)>0:
             #check that the test set contains the same number of levels as the train set
             if sorted(self.targetLevels) == sorted(np.unique(self.encodedTargetTest)):
+                #testResults contain predictions of the test set predictors
                 testResults=self.predict_class(self.testPredictors)
+                #Accuracy is the number of predictions that match the actual values divided by the number of datapoints in the test set
                 accuracy=sum(list(map(lambda x: x[0]==x[1],zip(testResults,self.encodedTargetTest))))/len(testResults)
                 print('\nTest Accuracy','%s'% float('%.4g'%accuracy))
                 if toFile:
+                    #simple GUI is convenient to use
                     from tkinter.filedialog import asksaveasfile
                     writelocation=asksaveasfile(mode='w+',defaultextension='.txt')
                     writelocation.write('Predicted | Actual \n')
-                    #writelocation.write('\n'+'Test set actual classes:    '+str(list(self.encodedTargetTest))+'\n')
+                    #zip predicted an actual into tuples
                     pairedActualPredicted=zip(*[list(testResults),list(self.encodedTargetTest)])
                     for row in pairedActualPredicted:
+                        #write each tuple to the file
                         writelocation.write('\n'+str(row))
                         if row[0]!=row[1]:
+                            #Note any incorrect predictions
                             writelocation.write(' * incorrect prediction')
                     writelocation.close()
                 return accuracy
                 
     def TrainTestRandomTen(self,toFile=False):
+        '''TrainTestRandomTen is a method specific to the assignment. It randomly splits the dataset 10 times into 
+        2/3 train and 1/3 test, where each of the train sets are used to train a model which is then tested against
+        their corresponding test sets'''
         accuracies=[]
         for i in range(10):
+            #randomly split the data
             self.trainTestSplit(2/3)
+            #fit a model to each train set
             self.fit(verbose=False)
+            #then append the test set accuracy to an array
             accuracies.append(self.predict_test(toFile))
         print('\nAccuracies',list(map(lambda x: '%s'% float('%.4g'%x),accuracies)))
         print('Average Accuracy: ','%s'% float('%.4g'%np.mean(accuracies)))
         print('Accuracy standard deviation: ','%s'% float('%.4g'%np.std(accuracies)))
         
-    def predict_class(self,x):
-        '''The predict_proba method returns a list of predicted values for each row in the provided x value. 
+    def predict_class(self,x,verbose=False):
+        '''The predict_class method returns a list of predicted values for each row in the provided x feature. 
         The data in x must align with the provided training data'''
         x=np.matrix(x,dtype=float)
         x=self.__scaleFeatures(x)
         x=self.__addIntercept(x)
-        f=np.vectorize(self.__sigmoid)
-        result=f(np.dot(x,self.weightMatrix))
+        #Non-vectorised implementations needed to vectorise the sigmoid function, keeping for reference
+        #f=np.vectorize(self.__sigmoid)
+        #result=f(np.dot(x,self.weightMatrix))
+        if verbose:
+            print('Each column represents the probability of a one vs. all class')
+            print(self.targetLevels)
+            print(self.__sigmoid(x,self.weightMatrix))
+        #result gives the probability predictions of each model
+        result=self.__sigmoid(x,self.weightMatrix)
+        #Map the highest probability back to it's actual (possibly non-numeric) value
         return list(map(lambda x: list(self.targetLevels)[x],list(np.apply_along_axis(np.argmax,1,result))))
 
     
@@ -249,7 +276,7 @@ class LogisticRegression():
 import pandas as pd 
 import numpy as np
 #change this to your own downloads folder
-owls=pd.read_csv('C:\\Users\\Marion\\Downloads\\owls15.csv',names=['body-length', 'wing-length', 'body-width', 'wing-width','type'])
+owls=pd.read_csv('/home/user15/Downloads/owls15.csv',names=['body-length', 'wing-length', 'body-width', 'wing-width','type'])
 owls=owls.reindex(np.random.permutation(owls.index))
 logReg3=LogisticRegression(owls.columns[:-1],owls.columns[-1],owls,0.9,0.15)
 logReg3.fit()
@@ -257,31 +284,26 @@ logReg3.plotConvergence()
 
 logReg3.trainTestSplit(0.75)
 logReg3.predict_test(True)
-
 logReg3.TrainTestRandomTen()
 
 predictions=logReg3.predict_class(owls[owls.columns[:-1]])
 owls['predictions']=predictions
-print(sum(owls['type']==owls['predictions']))
+print('Train Accuracy')
+print(sum(owls['type']==owls['predictions'])/len(owls))
 
 
 
-#%%
-        
+#%%   
 #Test 1        
 l=[[1,1,'zero'],[2,1,'zero'],[1,2,'zero'],[4,5,'one'],[4,4,'one'],[5,4,'one']]
 df = pd.DataFrame(l,columns=list('ABC'))
-logReg=LogisticRegression(['A','B'],['C'], df)
+logReg=LogisticRegression(df.columns[:-1],df.columns[-1], df)
 logReg.fit()
 print('Class predictions:')
-logReg.predict_class(df[df.columns[:-1]])
-#[[ 2.3535933  -2.3535933 ]
-# [-2.29137462  2.29137462]
-# [-2.29137462  2.29137462]]
+logReg.predict_class(df[df.columns[:-1]],True)
+
 
 #%%
-#passing in a 5x3 dataframe with 3 unique values. Expecting to see 3x3 weightMatrix 
-
 #Test 2      
 
 l1=[[1,1,0],[2,1,0],[1,2,0],[4,5,1],[4,4,1],[5,8,1]]
@@ -292,7 +314,6 @@ logReg1.trainTestSplit(2/3)
 logReg1.predict_class(df1[df1.columns[:-1]])
 logReg1.predict_test()
 #class predictions should be [0,0,0,1,1,1]
-#passing in a 5x3 dataframe with 2 unique values. Expecting to see 3x1 weightMatrix 
 #%%
 #Test 3
 l2=[[1,1,2,0],[2,1,2,0],[1,2,3,0],[4,5,5,1],[4,4,5,1],[7,7,7,2]]
@@ -300,9 +321,6 @@ df2=pd.DataFrame(l2,columns=list('ABCD'))
 logReg2=LogisticRegression(df2.columns[:-1],df2.columns[-1], df2)
 logReg2.fit()
 logReg2.predict_class(df2[df2.columns[:-1]])
-#passing in a 5x4 dataframe with 3 unique values. Expecting to see 4x3 weightMatrix 
-
-
 #%%
 import pandas as pd 
 import numpy as np
