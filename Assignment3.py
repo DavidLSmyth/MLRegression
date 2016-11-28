@@ -1,5 +1,12 @@
 # -*- coding: utf-8 -*-
 """
+Created on Sun Nov 27 20:02:24 2016
+
+@author: David Smyth
+"""
+
+# -*- coding: utf-8 -*-
+"""
 Created on Sun Nov 13 17:57:59 2016
 
 @author: David Smyth
@@ -12,37 +19,23 @@ Created on Sun Nov 13 17:57:59 2016
 #2).Takes in a data set, a formula (predictors & target) and fits theta vector to minimise cost function
 #Formula will have to allow for non-linear terms
 #Gradient Descent requires learning rate, tolerance etc.
-#Make this algorithm better if possible, for now just let the user pass it in
 #3).Option to return theta values, std. errors would also be nice
 
-
-#Details of fitting the theta vector: Gradient descent will need to be used, ideally vectorised 
-#If I have a n multi-class prediction problem, then I need n models to be fitted for each of the n classes
-#Details of prediction: If only two classes, straightforward. If multiclass, then return highest probability
-#of results of each of the n models above
-#A challenge will be to provided the right level of abstratction
-#One vs. all implementation difficult
-#Don't forget to add a column for the intercept
-
-#1). Logistic regression that will ouput probabilities.
 #Try plotting non-convex J(theta) cost function for better understanding
 
 #TODO:
-#1).tidy up current class
-#2).Vectorise current implementation
+#1).tidy up current class  y
+#2).Vectorise current implementation  y
 #3).Implement multiclass 1 vs. all predictions  y
-#4).Figure how to recover the unscaled weights
-#5).Rename everything to train/test to be clear what's what
-#6).Think about returning log odds
-#7).Give a way for users to enter non-linear combinations of the data
-#8).Make a scale_factors array which keeps each scale factor for each column
+#4).Rename everything to train/test to be clear what's what  y
+#5).Give a way for users to enter non-linear combinations of the data
+#6).Make a scale_factors array which keeps each scale factor for each column
 
+#Numpy matrices are strictly 2-dimensional, while numpy arrays (ndarrays) are N-dimensional.
+# Matrix objects are a subclass of ndarray, so they inherit all the attributes and methods of ndarrays.
 
-	
-
-#Numpy matrices are strictly 2-dimensional, while numpy arrays (ndarrays) are N-dimensional. Matrix objects are a subclass of ndarray, so they inherit all the attributes and methods of ndarrays.
-
-#The main advantage of numpy matrices is that they provide a convenient notation for matrix multiplication: if a and b are matrices, then a*b is their matrix product.
+#The main advantage of numpy matrices is that they provide a convenient notation for matrix 
+#multiplication: if a and b are matrices, then a*b is their matrix product.
 
 #%%
 class LogisticRegression():
@@ -51,7 +44,7 @@ class LogisticRegression():
     a logistic regression model. The class is initialised by providing the column names of the predictors in the 
     dataframe, the target column name and a pandas dataframe. The learning rate and regularizationValue can 
     also optionally be set'''
-    def __init__(self, predictors, target, dataframe,learningRate=2,regularizationValue=0.05):
+    def __init__(self, predictors, target, dataframe,learningRate=1,regularizationValue=0.1):
         import pandas as pd
         import numpy as np
         '''Pass in a list of predictors as strings, a target as a string, and a pandas dataframe'''
@@ -72,41 +65,41 @@ class LogisticRegression():
             pass
         #initally set the whole of the dataset for training
         self.TrainTestRatio=1
-        
-        #The names and levels of things do not change
+        #The names and levels of things do not change can be set here, everything else is passed to preprocess
         self.targetName=target
         self.predictorNames=predictors
-        #self.parameterVector=[0 for i in range(len(predictors))]
         self.target=np.array(dataframe[target])
         self.targetLevels=dataframe[target].unique()
-        print('unique levels:')
-        print(self.targetLevels)
         self.uniqueEncodedLevels=[i for i in range(len(dataframe[target].unique()))]
-        print('encodedLevels')
-        print(self.uniqueEncodedLevels)
         self.dataframe=dataframe
         self.__preprocessTrain(self.TrainTestRatio)
         #could make these private using __
-        self.tolerance=0.00002
+        self.tolerance=0.0000002
         self.learningRate=learningRate
         self.lambdaValue=regularizationValue
-        self.maxiter=5000
+        self.maxiter=8000
       
-    #have multiple implementations of data preprocessing code, do it all here. Shouldn't need to pass in any params 
+    #have multiple implementations of data preprocessing code, do it all here. 
     def __preprocessTrain(self,ratio):
         import numpy as np
-        randoms=np.random.uniform(0,1,len(self.dataframe))
-        print('Random Split: ',randoms)
-        self.trainSet=self.dataframe.iloc[randoms<ratio].copy(deep=True)
-        self.testSet=self.dataframe.iloc[randoms>=ratio].copy(deep=True)        
+        #randoms=np.random.uniform(0,1,len(self.dataframe))
+        newNos=np.random.permutation(self.dataframe.index)
+        self.trainSet=self.dataframe.reindex(newNos).head(np.round(len(self.dataframe)*ratio))
+        self.testSet=self.dataframe.reindex(newNos).tail(np.round(len(self.dataframe)*(1-ratio)))
+        #self.trainSet=self.dataframe.iloc[randoms<ratio].copy(deep=True)
         self.predictors=np.matrix(self.trainSet[self.predictorNames],dtype=float)
         self.nsamples=np.shape(self.predictors)[0]
         #add intercept to the predictor features
         self.predictors=self.__addIntercept(self.predictors)
         self.npredictors=np.shape(self.predictors)[1]
         self.scaleFactor=self.predictors.max()
-        print('self.scaleFactor:')
-        print(self.scaleFactor)
+        #if len(self.dataframe.iloc[randoms>=ratio].copy(deep=True)!=0):
+        if len(self.trainSet)!=len(self.dataframe):
+            #self.testSet=self.dataframe.iloc[randoms>=ratio].copy(deep=True) 
+            self.testPredictors=np.matrix(self.testSet[self.predictorNames],dtype=float)
+            self.testnsamples=np.shape(self.testPredictors)[0]
+            self.testNPredictors=np.shape(self.predictors)[1]
+            self.encodedTargetTest=np.array(self.testSet[self.targetName])
         self.encodedTarget=np.array(self.trainSet[self.targetName])
         if len(self.targetLevels)<2:
             print('The target variable has less than 2 unique values and cannot be classified!')
@@ -114,134 +107,90 @@ class LogisticRegression():
             if len(self.targetLevels)>=2:
                 #each column represents the weights of a model, number of rows gives the number of weights in each model
                 self.weightMatrix=np.zeros((self.predictors.shape[1],len(self.targetLevels)))
-                print('self.weightMatrix')
-                print(self.weightMatrix)
-        #self.encodedTarget=list(map(lambda x: self.uniqueEncodedLevels[list(self.targetLevels).index(x)] ,self.target))
-        print('encodedTarget',self.encodedTarget)
-        #self.parameterVector=np.array([0 for i in range(self.predictors.shape[1]+1)])
         self.scaleFactor=self.predictors.max()
         #Validations complete
 
     
     def trainTestSplit(self, ratio):
         '''Ratio is the desired ratio for the train set size to test set size, no return value'''
-        #print('\n\n trainTestSplit')
         self.TrainTestRatio=ratio
         self.__preprocessTrain(ratio)
-        
-
-    def __sigmoid(self,z):
-        from math import exp
-        #print('z',z)
-        return 1/(1+exp(-z))
+        print('Data succcessfully split into: ',len(self.trainSet),' training samples and ',len(self.testSet),' testing samples')
         
     def __addIntercept(self,featureMatrix):
-        n_samples=np.shape(featureMatrix)[0]
-        #print(np.array([[1] for i in range(self.nsamples)],dtype=float))
-        #print('scaled feature matrix with intercept: ',np.append(np.array([[1] for i in range(n_samples)],dtype=float),featureMatrix,1))
-        return np.append(np.array([[1] for i in range(n_samples)],dtype=float),featureMatrix,1)
+        return np.append(np.array([[1] for i in range(np.shape(featureMatrix)[0])],dtype=float),featureMatrix,1)
       
     def __scaleFeatures(self,npmatrix):
-        #print('pre scaled matrix: ',npmatrix)
-        #npmatrix=np.apply_along_axis(lambda x: (x-np.mean(x))/(np.std(x)),0,npmatrix)
-        #scale to 0-1
-        npmatrix=np.apply_along_axis(lambda x: x/max(x),0,npmatrix)
-        #npmatrix=np.apply_along_axis(lambda x: x,0,npmatrix)
-        print('scaled matrix:',npmatrix)
-        return npmatrix
-    #takes in single xi value
+        #npmatrix=np.apply_along_axis(lambda x: x/max(x),0,npmatrix)
+        return np.apply_along_axis(lambda x: x/max(x),0,npmatrix)
+        
+    #takes in single xi value, redundant since vectorised but leaving in for reference
     def __derivativeWRTTheta(self,xi,yi,thetai,i):
-        #print('derivative:')
-        #print('xi*(yi-h0(theta*xi)) equals: ',xi[i],'*(',yi,'-',self.__sigmoid(np.dot(xi,thetai.transpose())),')')
-        #print(xi[i]*(yi-self.__sigmoid(np.dot(xi,thetai.transpose()))))
         return xi[i]*(yi-self.__sigmoid(np.dot(xi,thetai.transpose())))
         
     #fit should have 0 or 1 as the target ALWAYS and should probably take a training set to fit
-    def fit(self,columnNames=[]):
+    def fit(self,columnNames=[],verbose=True):
         '''The fit method fits n models to the data using a 1 vs. all strategy, where n represents the unique number of levels of the 
         target variable'''
-        
         #here subset some of the columns for the user to specify only certain columns
         if(columnNames!=[]):
             pass
-        print('\n\n FIT')
-        print('Fitting Logistic Regression Model to ',self.TrainTestRatio*100,'% of the dataset')
-        print('length of predictors: ',len(self.predictors))
-        print(self.predictors,self.encodedTarget)
-        print('number of models equals', self.weightMatrix.shape[1])
+        print('\nFitting Logistic Regression Model to ','%s'%float('%.5g' % (self.TrainTestRatio*100)),'% of the dataset')
         import time
         st=time.clock()
         #apply gradient descent using each set of weights in weight matrix
-        print('columns:')
         for columnNo in range(len(self.weightMatrix.transpose())):
-            #print(self.weightMatrix.transpose()[columnNo])
-            #print('One vs. all:',self.targetLevels[columnNo])
-            #print(self.encodedTarget)
-            #print(self.targetLevels[columnNo])
             oneVSAllTarget=np.array(list(map(lambda x:1 if x==self.targetLevels[columnNo] else 0,self.encodedTarget)))
-            #print('oneVSAllTarget',oneVSAllTarget)
             self.weightMatrix.transpose()[columnNo]=self.__gradientDescent(self.weightMatrix.transpose()[columnNo],self.predictors,oneVSAllTarget)
-        #self.weightMatrix=np.apply_along_axis(self.__gradientDescent,0,self.weightMatrix,self.predictors,self.encodedTarget)
-        #self.__gradientDescent(self.predictors)
-        print('Fit in ',time.clock()-st, ' seconds')
-        
-        #Try and print the results of each model vs. the other models for 1 vs. all
-        print('gradient descent results: ')
-        print(self.weightMatrix)
-        
+        print('Fit in ','%s'% float('%.5g'%(time.clock()-st)), ' seconds')
+        if verbose:
+            self.__fitResults()
+       
+    def __fitResults(self):
+        '''Nicely outputs the results of the model once it has been fit'''
+        for columnNo in range(len(self.weightMatrix.transpose())): 
+            print('\n---------------------------------------------------')
+            print('Coefficients for ',self.targetLevels[columnNo],' vs. all model')
+            print('Intercept'+' '*8+' : '+' '*8,'%s'% float('%.5g'%self.weightMatrix[0][columnNo]))                   
+            for coef in range(1,len(self.weightMatrix)):
+                print(self.predictorNames[coef-1], ' '*(16-len(self.predictorNames[coef-1]))+' : '+' '*8, '%s'% float('%.5g'%self.weightMatrix.item(coef,columnNo)))
+        print('---------------------------------------------------')
         
     #this never needs to be accessed ouside of this class so is private 
     #Given a feature matrix and a weight vector and a target column, return the optimised weight matrix
+    #featureMatrix is self.predictors
     def __gradientDescent(self,weightVector,featureMatrix, targetVector):
         import time
         start=time.clock()
-        print('\n\n gradientDescent')
-        print('One vs. all:')
-        #print(targetVector)
         import pandas as pd
         import numpy as np
         weights=np.array(weightVector)
         featureMatrix=self.__scaleFeatures(featureMatrix)
-        #condition initally starts as true
+        #condition initally starts as true, gives a do-while effect
         condition=True
         iterations=0
         self.gradientMagnitude=[]
         while(condition and iterations<self.maxiter):
-            #implement one vs all here
-            gradSquareSum=0 
-            #print('\n\n\n\n starting weights: ',weights)
-            #print('predictions: ', self.predictOutcome(featureMatrix,weights))
-            #print('len of feature matrix', len(featureMatrix))
-            tmp=np.copy(weights)
-            newparams=[]            
-            for weight in range(len(weights)):
-                #compute the derivative
-                #print('\n\nweight',weight)
-                s=0
-                #print('encoded target:',targetVector)
-                for i in range(len(featureMatrix)):
-                    #print('i',i)
-                    #print('der',self.__derivativeWRTTheta(self.predictors[i],self.encodedTarget[i],tmp))
-                    #print('working on row: ',i, featureMatrix[i], 'yi',targetVector[i])
-                
-                    #have an np.apply_to_colomn call here
-                    s=s+self.__derivativeWRTTheta(featureMatrix[i],targetVector[i],tmp,weight)
-                #print('total derivative',s)
-                derivative=(-1/featureMatrix.shape[0])*s                
-                #print(' averaged derivative for theta ',weight)
-                #print(derivative)
-                #print('here',newparams[weight])
-                newparams.append(tmp[weight]*(1-((self.learningRate*self.lambdaValue)/featureMatrix.shape[0]))-self.learningRate*derivative)
-                #print('newparams[weight]',newparams[weight])
-                #print('newparams',newparams)
-                gradSquareSum+=derivative**2
-            self.gradientMagnitude.append(derivative**2)   
-            #print('gradSquareSum: ',gradSquareSum)
-            weights=np.copy(newparams)
+            weightsCopy=np.copy(weights)
+            #compute derivative of cost function
+            s1=(1/featureMatrix.shape[0])*(np.dot(featureMatrix.T,(self.__sigmoid(featureMatrix,weightsCopy))-targetVector))
+            #don't regularise intercept            
+            s10=s1[0]
+            #regularise everything else
+            s1+=(weightsCopy*self.lambdaValue)/(featureMatrix.shape[0])
+            s1[0]=s10
+            #update weights based on derivative
+            weightsCopy-=self.learningRate*(s1)
+            weights=np.copy(weightsCopy)
+            gradSquareSum=np.dot(s1,s1.T)
+            self.gradientMagnitude.append(gradSquareSum)
             if(gradSquareSum<self.tolerance or (time.clock()-start>5)):
                 condition=False
             iterations+=1
         return weights
+
+    def __sigmoid(self, X, Weight):
+        return 1.0/(1+np.exp(- np.dot(X,Weight)))
 
     #plotConvergence function is provided so that the user can check if the algorithm has converged to a solution if there 
     #are any issues with prediction
@@ -253,85 +202,159 @@ class LogisticRegression():
         plt.xlabel('Iteration number')
         plt.ylabel('Magnitude of derivative')
         plt.title('Plot of gradient magnitude vs. iteration')
-
-    #this should take in a dataframe, and check that the relevant columns are present with relevant levels, then split into a feature matrix
-    #and a target array and then run the probability predictions
+        
+    def predict_test(self,toFile=False):
+        if len(self.testSet)>0:
+            #check that the test set contains the same number of levels as the train set
+            if sorted(self.targetLevels) == sorted(np.unique(self.encodedTargetTest)):
+                testResults=self.predict_class(self.testPredictors)
+                accuracy=sum(list(map(lambda x: x[0]==x[1],zip(testResults,self.encodedTargetTest))))/len(testResults)
+                print('\nTest Accuracy','%s'% float('%.4g'%accuracy))
+                if toFile:
+                    from tkinter.filedialog import asksaveasfile
+                    writelocation=asksaveasfile(mode='w+',defaultextension='.txt')
+                    writelocation.write('Predicted | Actual \n')
+                    #writelocation.write('\n'+'Test set actual classes:    '+str(list(self.encodedTargetTest))+'\n')
+                    pairedActualPredicted=zip(*[list(testResults),list(self.encodedTargetTest)])
+                    for row in pairedActualPredicted:
+                        writelocation.write('\n'+str(row))
+                        if row[0]!=row[1]:
+                            writelocation.write(' * incorrect prediction')
+                    writelocation.close()
+                return accuracy
+                
+    def TrainTestRandomTen(self,toFile=False):
+        accuracies=[]
+        for i in range(10):
+            self.trainTestSplit(2/3)
+            self.fit(verbose=False)
+            accuracies.append(self.predict_test(toFile))
+        print('\nAccuracies',list(map(lambda x: '%s'% float('%.4g'%x),accuracies)))
+        print('Average Accuracy: ','%s'% float('%.4g'%np.mean(accuracies)))
+        print('Accuracy standard deviation: ','%s'% float('%.4g'%np.std(accuracies)))
+        
     def predict_class(self,x):
         '''The predict_proba method returns a list of predicted values for each row in the provided x value. 
         The data in x must align with the provided training data'''
-        print('pre x matrix',x)
         x=np.matrix(x,dtype=float)
         x=self.__scaleFeatures(x)
-        print('post scaled',x)
         x=self.__addIntercept(x)
-        #print('x',x)
         f=np.vectorize(self.__sigmoid)
-        #print(np.dot(x,self.weightMatrix))
         result=f(np.dot(x,self.weightMatrix))
-        #print(result)
-            #print(np.apply_along_axis(,1,np.dot(x,self.weightMatrix)))
-        print(list(np.apply_along_axis(np.argmax,1,result)))
-        print(list(self.targetLevels))
-        print(list(map(lambda x: list(self.targetLevels)[x],list(np.apply_along_axis(np.argmax,1,result)))))
         return list(map(lambda x: list(self.targetLevels)[x],list(np.apply_along_axis(np.argmax,1,result))))
-        #list(map(lambda x: self.targetName.index(x),
-        #return list(map(lambda x: self.__sigmoid(x),np.dot(x,self.weightMatrix)))
+
     
-    #def predict_class(self,x):
-     #   return list(map(lambda x: 1 if x>0.5 else 0, self.predict_proba(x)))
+
 #%%     
 import pandas as pd 
 import numpy as np
-#dframe=pd.read_csv('/home/user15/Downloads/David/owls15.csv')
-#logReg=LogisticRegression(dframe.columns[:-1],dframe.columns[-1], dframe)
-#logReg.fit()
+#change this to your own downloads folder
+owls=pd.read_csv('C:\\Users\\Marion\\Downloads\\owls15.csv',names=['body-length', 'wing-length', 'body-width', 'wing-width','type'])
+owls=owls.reindex(np.random.permutation(owls.index))
+logReg3=LogisticRegression(owls.columns[:-1],owls.columns[-1],owls,0.9,0.15)
+logReg3.fit()
+logReg3.plotConvergence()
+
+logReg3.trainTestSplit(0.75)
+logReg3.predict_test(True)
+
+logReg3.TrainTestRandomTen()
+
+predictions=logReg3.predict_class(owls[owls.columns[:-1]])
+owls['predictions']=predictions
+print(sum(owls['type']==owls['predictions']))
+
+
+
+#%%
         
 #Test 1        
 l=[[1,1,'zero'],[2,1,'zero'],[1,2,'zero'],[4,5,'one'],[4,4,'one'],[5,4,'one']]
 df = pd.DataFrame(l,columns=list('ABC'))
-logReg=LogisticRegression(df.columns[:-1],df.columns[-1], df)
+logReg=LogisticRegression(['A','B'],['C'], df)
 logReg.fit()
-logReg.trainTestSplit(0.9)
 print('Class predictions:')
 logReg.predict_class(df[df.columns[:-1]])
+#[[ 2.3535933  -2.3535933 ]
+# [-2.29137462  2.29137462]
+# [-2.29137462  2.29137462]]
+
 #%%
 #passing in a 5x3 dataframe with 3 unique values. Expecting to see 3x3 weightMatrix 
 
 #Test 2      
 
-    l1=[[1,1,0],[2,1,0],[1,2,0],[4,5,1],[4,4,1],[5,4,1]]
+l1=[[1,1,0],[2,1,0],[1,2,0],[4,5,1],[4,4,1],[5,8,1]]
 df1 = pd.DataFrame(l1,columns=list('ABC'))
 logReg1=LogisticRegression(df1.columns[:-1],df1.columns[-1], df1)
 logReg1.fit()
+logReg1.trainTestSplit(2/3)
 logReg1.predict_class(df1[df1.columns[:-1]])
+logReg1.predict_test()
 #class predictions should be [0,0,0,1,1,1]
 #passing in a 5x3 dataframe with 2 unique values. Expecting to see 3x1 weightMatrix 
 #%%
-#Test 2
+#Test 3
 l2=[[1,1,2,0],[2,1,2,0],[1,2,3,0],[4,5,5,1],[4,4,5,1],[7,7,7,2]]
 df2=pd.DataFrame(l2,columns=list('ABCD'))
 logReg2=LogisticRegression(df2.columns[:-1],df2.columns[-1], df2)
 logReg2.fit()
-logReg2.plotConvergence()
 logReg2.predict_class(df2[df2.columns[:-1]])
 #passing in a 5x4 dataframe with 3 unique values. Expecting to see 4x3 weightMatrix 
+
+
 #%%
-owls=pd.read_csv('/home/user15/Downloads/owls15.csv',names=['body-length', 'wing-length', 'body-width', 'wing-width','type'])
-owls =  owls.reindex(np.random.permutation(owls.index))
-logReg3=LogisticRegression(owls.columns[:-1],owls.columns[-1],owls)
-logReg3.trainTestSplit(0.85)
+import pandas as pd 
+import numpy as np
+owls=pd.read_csv('C:\\Users\\Marion\\Downloads\\owls15.csv',names=['body-length', 'wing-length', 'body-width', 'wing-width','type'])
+import matplotlib.pyplot as plt
+owls.groupby('type')['body-length'].mean()
+owls.groupby('type')['wing-length'].mean()
+owls.groupby('type')['body-width'].mean()
+owls.groupby('type')['wing-width'].mean()
+
+c=[]
+c=['red']*len(owls[owls['type']=='LongEaredOwl'])
+c+=(['green']*len(owls[owls['type']=='SnowyOwl']))
+c+=(['blue']*len(owls[owls['type']=='BarnOwl']))
+
+plt.title('Body length vs. Other variables')
+plt.scatter(owls['body-length'],owls['wing-length'],c=c)
+plt.scatter(owls['body-length'],owls['body-width'],c=c)
+plt.scatter(owls['body-length'],owls['wing-width'],c=c)
+
+plt.title('Scatter plot of each pair of variables superimposed')
+plt.scatter(owls['wing-length'],owls['body-length'],c=c)
+plt.scatter(owls['wing-length'],owls['body-width'],c=c)
+plt.scatter(owls['wing-length'],owls['wing-width'],c=c)
+
+plt.title('Scatter plot of each pair of variables superimposed')
+plt.scatter(owls['body-width'],owls['body-length'],c=c)
+plt.scatter(owls['body-width'],owls['wing-length'],c=c)
+plt.scatter(owls['body-width'],owls['wing-width'],c=c)
+
+plt.title('Scatter plot of each pair of variables superimposed')
+plt.scatter(owls['wing-width'],owls['body-length'],c=c)
+plt.scatter(owls['wing-width'],owls['wing-length'],c=c)
+plt.scatter(owls['wing-width'],owls['body-width'],c=c)
+
+#%%
+owls=pd.read_csv('C:\\Users\\Marion\\Downloads\\owls15.csv',names=['body-length', 'wing-length', 'body-width', 'wing-width','type'])
+owls=owls.reindex(np.random.permutation(owls.index))
+logReg3=LogisticRegression(owls.columns[:-1],owls.columns[-1],owls,0.9,0.15)
 logReg3.fit()
+
+logReg3.TrainTestRandomTen()
 logReg3.plotConvergence()
-uniqueLevels=list(owls['LongEaredOwl'].unique())
-list(map(lambda x: uniqueLevels[x],predictions))
 predictions=logReg3.predict_class(owls[owls.columns[:-1]])
-print(owls.columns)
 owls['predictions']=predictions
 print(sum(owls['type']==owls['predictions']))
-owls=owls.replace('BarnOwl','SnowyOwl')
-print(owls[owls.iloc('type')])
-print(len(owls))
+print(owls.loc[owls['type']!=owls['predictions']])
+logReg3.predict_test()
 
+
+#%%
+owls['type'].unique()
 #plot long-eared vs.all
 owls1=owls.replace('BarnOwl','SnowyOwl')
 #plot barn vs. all
@@ -341,10 +364,10 @@ owls3=owls.replace('LongEaredOwl','BarnOwl')
 
 owls4=owls.replace('BarnOwl','SnowyOwl')
 
-pythonUnivar(owls,'body-length','type','SnowyOwl')
-pythonUnivar(owls,'wing-length','type')
-pythonUnivar(owls,'body-width','type')
-pythonUnivar(owls,'wing-width','type')
+pythonUnivar(owls3,'body-length','type','SnowyOwl',bins=10)
+pythonUnivar(owls3,'body-width','type','SnowyOwl',bins=10)
+pythonUnivar(owls3,'wing-length','type','SnowyOwl',bins=10)
+pythonUnivar(owls3,'wing-width','type','SnowyOwl',bins=10)
 #%%
 def pythonUnivar(dataframe,feature, target, targetSuccessName=None, prediction=None,bins=10): 
     #dataframe should be a pandas dataframe
@@ -410,12 +433,12 @@ def pythonUnivar(dataframe,feature, target, targetSuccessName=None, prediction=N
         fig=plt.figure()
         ax1=fig.add_subplot(111)
         #add title
-        plt.title('Histogram of '+feature+' and proportion of '+str(targetVals[0])+' in each bin')
+        plt.title('Histogram of '+feature+' and proportion of '+str(targetSuccessName)+' in each bin')
         #add second axis to give proporion of 1 values per bin
         ax2 = ax1.twinx()
         #label both axes
-        ax2.set_ylabel('Proportion of '+str(targetVals[0])+' per bin')
-        ax1.set_ylabel('Count of '+str(targetVals[0])+' in each bin')
+        ax2.set_ylabel('Proportion of '+str(targetSuccessName)+' per bin')
+        ax1.set_ylabel('Count of '+str(targetSuccessName)+' in each bin')
         #create a regular histogram
         n=ax1.hist(dataframe[feature], bins=bins, normed=False, alpha=0.5)
         for i in n:
@@ -449,35 +472,6 @@ def pythonUnivar(dataframe,feature, target, targetSuccessName=None, prediction=N
     ax1.legend(loc='upper left')
     dataframe[target]=targetVar
     return
-
-
-
-#logReg.trainTestSplit(1)
-#logReg.fit()
-
-#print('probability predictions for whole dataset: ',logReg.predict_proba(df[df.columns[:-1]]))
-#print('class predictions for whole dataset: ',logReg.predict_class(df[df.columns[:-1]]))
-#test=[[4,4],[5,10]]
-#print(logReg.predict_class(pd.DataFrame(test,columns=list('AB'))))
-#logReg.trainTestSplit(0.7)
-
-#This gives the first row of the dataframe
-#df[0:1]
-#This gives the second row of the dataframe
-#df[1:2]
-#This gives the second row of the dataframe subsetted to first to third columns
-#df[1:2][df.columns[1:3]]       
-        
-
-#all_data = np.append(arr2,arr, 1)
-#l1=c(1,2,1,4,4,5)
-#l2=c(1,1,2,5,4,4)
-#l3=c(0,0,0,1,1,1)
-
-#dframe=data.frame(l1,l2,l3)
-#model <- glm(l3 ~.,family=binomial(link='logit'),data=dframe)
-#summary(model)
-#model
 #%%     
        
 def commentCode(string):
