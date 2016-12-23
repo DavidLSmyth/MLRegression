@@ -107,6 +107,7 @@ class LogisticRegression():
         '''Ratio is the desired ratio for the train set size to test set size, no return value'''
         self.TrainTestRatio=ratio
         self.__preprocessTrain(ratio)
+        self.fit()
         print('Data succcessfully split into: ',len(self.trainSet),' training samples and ',len(self.testSet),' testing samples')
     
     #simply adds an intercept to a featureMatrix
@@ -281,9 +282,22 @@ owls=owls.reindex(np.random.permutation(owls.index))
 logReg3=LogisticRegression(owls.columns[:-1],owls.columns[-1],owls,0.9,0.15)
 logReg3.fit()
 logReg3.plotConvergence()
+import pickle
+file_name='testfile'
+fileObject=open(file_name,'wb')
+pickle.dump(logReg3,fileObject)
+fileObject.close()
+
+
+fileObject=open(file_name,'rb')
+deserialized=pickle.load(fileObject)
+deserialized.trainTestSplit(0.65)
+deserialized.fit()
+deserialized.predict_test()
+
 
 logReg3.trainTestSplit(0.75)
-logReg3.predict_test(True)
+logReg3.predict_test()
 logReg3.TrainTestRandomTen()
 
 predictions=logReg3.predict_class(owls[owls.columns[:-1]])
